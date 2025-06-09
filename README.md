@@ -2,7 +2,7 @@ This folder contains data and code used in the manuscript "Spatial heterogeneity
 
 Data files are contained in the folder /Data/
 
-Output from the main analysis is contained in the folder /Output/
+Output from the main analysis can be accessed via the folder /Output/
 
 Code is contained in the folder /Programs/
   Users will need to edit the root directory in each program.
