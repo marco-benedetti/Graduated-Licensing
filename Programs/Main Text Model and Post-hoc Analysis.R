@@ -1,8 +1,8 @@
 
 
-###############################
-# STEP 1: DATA PRE-PROCESSING #
-###############################
+#######################
+# DATA PRE-PROCESSING #
+#######################
 
 # INSTALL PACKAGES AND LOAD LIBRARIES
 #install.packages("INLA")
@@ -25,30 +25,34 @@ require(tidycensus)
 require(RColorBrewer)
 
 
+# CHANGE TO ROOT DIRECTORY
+root <- ""
+
+
 # READ IN DATA 
-basedata_trt <- read.csv("[PARENT FOLDER]\\Data\\OhioCrashes_1617.csv")
-basedata_ctrl <- read.csv("[PARENT FOLDER]\\Data\\OhioCrashes_1824.csv")
+basedata_trt <- read.csv(paste(root,"Data\\OhioCrashes_1617.csv",sep=""))
+basedata_ctrl <- read.csv(paste(root,"Data\\OhioCrashes_3034.csv",sep=""))
 
-LD_data <- read.csv("[PARENT FOLDER]\\Data\\Num_LD_Main_File.csv")
+LD_data <- read.csv(paste(root,"Data\\Num_LD_Main_File.csv",sep=""))
 
-pop_00_09 <- read.csv("[PARENT FOLDER]\\Data\\age_grp_ohio_county_pop_00_09.csv")
-pop_10_18 <- read.csv("[PARENT FOLDER]\\Data\\age_grp_ohio_county_pop_10_18.csv")
+pop_00_09 <- read.csv(paste(root,"Data\\age_grp_ohio_county_pop_00_09.csv",sep=""))
+pop_10_18 <- read.csv(paste(root,"Data\\age_grp_ohio_county_pop_10_18.csv",sep=""))
 
-poverty_2008 <- read.csv("[PARENT FOLDER]\\Data\\est08all.csv")
-UIC <- read.csv("[PARENT FOLDER]\\Data\\Ohio_UIC.csv")
+poverty_2008 <- read.csv(paste(root,"Data\\est08all.csv",sep=""))
+UIC <- read.csv(paste(root,"Data\\Ohio_UIC.csv",sep=""))
 
-county_map <- st_read("[PARENT FOLDER]\\Data\\shapefile\\cb_2018_us_county_500k.shp")
+county_map <- st_read(paste(root,"Data\\shapefile\\cb_2018_us_county_500k.shp",sep=""))
 ohio_map <- county_map[which(county_map$STATEFP=="39"),]
 rm(county_map)
 
-police_data <- read.csv("[PARENT FOLDER]\\Data\\police_data.csv")
-
-vmt <- read.csv("[PARENT FOLDER]\\Data\\VMT2008.csv")
+police_data <- read.csv(paste(root,"Data\\police_data.csv",sep=""))
 
 
-###########################
-# STEP 2: DATA PROCESSING #
-###########################
+vmt <- read.csv(paste(root,"Data\\VMT2008.csv",sep=""))
+
+###################
+# DATA PROCESSING #
+###################
 
 ## PROCESS THE POPULATION DATA ##	
 
@@ -81,14 +85,6 @@ police_data$officers_per <- police_data$num_officer/police_data$pop
 police_data$budget_per <- police_data$budget/police_data$pop
 
 
-## PROCESS VMT DATA ##
-
-interstate <- vmt$`FC...01`
-total <- vmt$Total
-total_per_pop <- total/subset_pop$TOT_POP
-pct_urban <- vmt$URBAN/vmt$Total
-
-
 ## PROCESS THE INJURY DATA ##
 
 
@@ -105,6 +101,15 @@ trt_data_step2 <- trt_data_step1[order(trt_data_step1$county,trt_data_step1$year
 ctrl_data_step2 <- ctrl_data_step1[order(ctrl_data_step1$county,ctrl_data_step1$year),]
 
 
+
+## PROCESS VMT DATA ##
+
+interstate <- vmt$`FC...01`
+total <- vmt$Total
+total_per_pop <- total/subset_pop$TOT_POP
+pct_urban <- vmt$URBAN/vmt$Total
+
+
 ## MERGE INJURY AND LICENSED DRIVERS DATA ##
 
 # Merge
@@ -117,10 +122,10 @@ trt_data_step3$trt = rep(1,nrow(trt_data_step3))
 trt_data_step3$period <- as.numeric(trt_data_step3$year > 2007)
 trt_data_step3$injury_rate <- trt_data_step3$COUNT/trt_data_step3$LD_16_17*1000
 
-ctrl_data_step3$AGEGRP = rep("18-24",nrow(ctrl_data_step3))
+ctrl_data_step3$AGEGRP = rep("30-34",nrow(ctrl_data_step3))
 ctrl_data_step3$trt = rep(0,nrow(ctrl_data_step3))
 ctrl_data_step3$period <- as.numeric(ctrl_data_step3$year > 2007)
-ctrl_data_step3$injury_rate <- ctrl_data_step3$COUNT/ctrl_data_step3$LD_18_24*1000
+ctrl_data_step3$injury_rate <- ctrl_data_step3$COUNT/ctrl_data_step3$LD_30_34*1000
 
 # Combine
 analysis_data_step1 <- rbind(trt_data_step3,ctrl_data_step3)
@@ -157,7 +162,7 @@ scale_parm <- exp((1/nrow(W_scale))*sum(log(1/diag(Q))))
 nimble_data <- list()
 
 nimble_data$y <- as.numeric(analysis_data$COUNT)
-nimble_data$offset <- ifelse(analysis_data$AGEGRP=="18-24",analysis_data$LD_18_24,analysis_data$LD_16_17)
+nimble_data$offset <- ifelse(analysis_data$AGEGRP=="30-34",analysis_data$LD_30_34,analysis_data$LD_16_17)
 nimble_data$trt <- analysis_data$trt
 
 nimble_data$I03 <-ifelse(analysis_data$year==2003,1,0)
@@ -189,7 +194,6 @@ for(i in 1:nrow(analysis_data)){
 ##################
 # START ANALYSIS #
 ##################
-
 
 # MIXING PARAMETERS ARE NAMED rho_[LABEL]
 # PRECISION PARAMETERS ARE NAMED tau_[LABEL]
@@ -295,10 +299,10 @@ nimbleCode({
 
 		######
 
-		# TREATMENT GROUP #
+		# AGE GROUP VARIABLE #
 		beta_1i[i] ~ dnorm(beta_1,tau=tau_beta_1)
 		
-		# POLICY VARIABLE
+		# POLICY EFFECT VARIABLE
 		beta_2i[i] <- beta_2 + (1/sqrt(tau_beta_2))*(sqrt((1-rho_beta_2))*theta_beta_2[i] + sqrt(rho_beta_2/scale_parm)*phi_beta_2[i])
 		theta_beta_2[i] ~ dnorm(0,tau=tau_theta_beta_2)
 	}
@@ -369,23 +373,64 @@ main_nimble <- nimbleModel(code=main_code, name = "simple_model", constants = co
 
 main_compile <- compileNimble(main_nimble)
 
-
-# RUN CODE
 main_MCMC <- nimbleMCMC(code=main_code, constants = constants,
 				  data = nimble_data, inits = inits, monitors = monitor,
 				  niter = 50000, nburnin = 10000, thin = 20, nchains = 1, progressBar = TRUE,WAIC=TRUE)
 
-# SAVE OUTPUT
-main_MCMC <- saveRDS(main_MCMC,"[PARENT FOLDER]\\Output\\Output_beta_1_independent.rds")
+saveRDS(main_MCMC,paste(root,"Output\\Output_beta_1_independent_30_34.rds",sep=""))
 
-# IF YOU WANT TO JUST READ IN THE EXISTING OUTPUT:
-#main_MCMC <- readRDS("[PARENT FOLDER]\\Output\\Output_beta_1_independent.rds")
+
+
+# START HERE IF YOU WANT TO JUST READ IN THE EXISTING OUTPUT:
+main_MCMC <- readRDS(paste(root,"Output\\Output_beta_1_independent_30_34.rds",sep=""))
 
 # DOUBLE CHECK INDICES. WE'RE LOOKING FOR THE TERMS LABELED "beta_2i[]"
 #dimnames(main_MCMC$samples)
 
 
-# CREATE POINT ESTIMATES AND 95% CREDIBLE INTERVALS
+# PLOT OBSERVED AND FITTED VALUES: NOT INCLUDED IN PAPER
+
+yy <- nimble_data$y
+n <- length(yy)
+fitted <- fittedU <- fittedL <- rep(0,n)
+
+for(i in 1:n){
+  fitted[i] <- mean(main_MCMC$samples[,i])
+  fittedU[i] <- quantile(main_MCMC$samples[,i],0.975)
+  fittedL[i] <- quantile(main_MCMC$samples[,i],0.025)
+  
+}
+
+plot(yy)
+lines(fitted,col=2)
+lines(fittedU,col=2,lty=2)
+lines(fittedL,col=2,lty=2)
+
+
+plot(seq(2003,2017),yy[seq(1,30,2)],type='l',xlab="Year",ylab="Crash Count")
+lines(seq(2003,2017),fitted[seq(1,30,2)],col=2)
+legend("topright",lty=c(1,1),col=c(1,2),legend=c("Observed","Fitted"))
+
+plot(seq(2003,2017),yy[seq(2,30,2)],type='l',xlab="Year",ylab="Crash Count")
+lines(seq(2003,2017),fitted[seq(2,30,2)],col=2)
+legend("topright",lty=c(1,1),col=c(1,2),legend=c("Observed","Fitted"))
+
+
+plot(seq(2003,2017),yy[seq(511,540,2)],type='l',xlab="Year",ylab="Crash Count")
+lines(seq(2003,2017),fitted[seq(511,540,2)],col=2)
+legend("topright",lty=c(1,1),col=c(1,2),legend=c("Observed","Fitted"))
+
+
+plot(seq(2003,2017),yy[seq(512,540,2)],type='l',xlab="Year",ylab="Crash Count")
+lines(seq(2003,2017),fitted[seq(512,540,2)],col=2)
+legend("topright",lty=c(1,1),col=c(1,2),legend=c("Observed","Fitted"))
+
+
+
+##############################################
+# POINT ESTIMATES AND 95% CREDIBLE INTERVALS #
+##############################################
+
 ncounty <- 88
 point_est <- LL <- UL <- rep(0,ncounty)
 for(i in 1:ncounty){
@@ -399,59 +444,25 @@ for(i in 1:ncounty){
 }
 
 
-# PLOT EFFECT ESTIMATES AND 95% CREDIBLE INTERVALS
-# ORDER BASED ON FIPS CODE
+
+############################################################
+## ESTIMATES ORDERED BY EFFECT SIZE: FIGURE 1 (A) AND (B) ##
+############################################################
 
 county_names <- rep("",ncounty)
 for(i in 1:ncounty){
-	tmp <- LD_data$CTYNAME[which(LD_data$county==counties[i])][1]
-	county_names[i] <- substr(tmp,1,nchar(tmp)-7)
+  tmp <- LD_data$CTYNAME[which(LD_data$county==counties[i])][1]
+  county_names[i] <- substr(tmp,1,nchar(tmp)-7)
 }
 
 par(las=1)
 par(mar=c(6,6,1,1))
-plot(point_est[1:44],44:1,xlim=c(0.78,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = '',yaxt='n')
-for(i in 1:44){
-	segments(UL[i],45-i,LL[i],45-i)
-	segments(LL[i],45-i-0.2,LL[i],45-i+0.2)
-	segments(UL[i],45-i-0.2,UL[i],45-i+0.2)
-}
-
-abline(v=1)
-axis(side=2,at=44:1,labels=county_names[1:44])
-
-
-par(las=1)
-par(mar=c(6,6,1,1))
-plot(point_est[45:88],44:1,xlim=c(0.78,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = '',yaxt='n')
-for(i in 45:88){
-	segments(UL[i],89-i,LL[i],89-i)
-	segments(LL[i],89-i-0.2,LL[i],89-i+0.2)
-	segments(UL[i],89-i-0.2,UL[i],89-i+0.2)
-}
-
-abline(v=1)
-axis(side=2,at=44:1,labels=county_names[45:88])
-
-
-
-# TRACE PLOTS
-
-par(mfrow=c(2,1))
-plot(exp(main_MCMC$samples[,4051]),type='l',main="beta_2i Adams County", xlab="Iteration",ylab="beta_2i",ylim=c(0.8,1))
-plot(exp(main_MCMC$samples[,4068]),type='l',main="beta_2i Cuyahoga County", xlab="Iteration",ylab="beta_2i",ylim=c(0.8,1))
-
-
-
-## ORDER BY EFFECT SIZE ##
-par(las=1)
-par(mar=c(6,6,1,1))
-plot(point_est[order(point_est)][1:44],44:1,xlim=c(0.78,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
+plot(point_est[order(point_est)][1:44],44:1,xlim=c(0.70,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
 
 for(i in 1:44){
-	segments(LL[order(point_est)][i],45-i,UL[order(point_est)][i],45-i)
-	segments(LL[order(point_est)][i],45-i-0.2,LL[order(point_est)][i],45-i+0.2)
-	segments(UL[order(point_est)][i],45-i-0.2,UL[order(point_est)][i],45-i+0.2)
+  segments(LL[order(point_est)][i],45-i,UL[order(point_est)][i],45-i)
+  segments(LL[order(point_est)][i],45-i-0.2,LL[order(point_est)][i],45-i+0.2)
+  segments(UL[order(point_est)][i],45-i-0.2,UL[order(point_est)][i],45-i+0.2)
 }
 abline(v=1)
 abline(v=mean(exp(main_MCMC$samples[,4050])),lty=2)
@@ -459,68 +470,80 @@ axis(side=2,at=44:1,labels=county_names[order(point_est)][1:44])
 legend("topright",lty=c(2,1),legend=c(expression(paste("E(",exp(beta[2]),"|Y)")),"Null Value"),bg="white")
 
 
+
+
 par(las=1)
 par(mar=c(6,6,1,1))
-plot(point_est[order(point_est)][45:88],44:1,xlim=c(0.78,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
+plot(point_est[order(point_est)][45:88],44:1,xlim=c(0.70,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
 
 for(i in 45:88){
-	segments(LL[order(point_est)][i],89-i,UL[order(point_est)][i],89-i)
-	segments(LL[order(point_est)][i],89-i-0.2,LL[order(point_est)][i],89-i+0.2)
-	segments(UL[order(point_est)][i],89-i-0.2,UL[order(point_est)][i],89-i+0.2)
+  segments(LL[order(point_est)][i],89-i,UL[order(point_est)][i],89-i)
+  segments(LL[order(point_est)][i],89-i-0.2,LL[order(point_est)][i],89-i+0.2)
+  segments(UL[order(point_est)][i],89-i-0.2,UL[order(point_est)][i],89-i+0.2)
 }
 abline(v=1)
 abline(v=mean(exp(main_MCMC$samples[,4050])),lty=2)
 axis(side=2,at=44:1,labels=county_names[order(point_est)][45:88])
 legend("topright",lty=c(2,1),legend=c(expression(paste("E(",exp(beta[2]),"|Y)")),"Null Value"),bg="white")
-#dev.off()
 
 
-# ORDER BY POP SIZE
+#########################################
+## ORDER BY POPULATION SIZE: FIGURE A2 ##
+#########################################
 
-pop <- subset_pop$TOT_POP
+
+counties_pop_order <- counties[order(subset_pop$TOT_POP)]
 
 par(las=1)
 par(mar=c(6,6,1,1))
-plot(point_est[order(pop)][1:44],44:1,xlim=c(0.78,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
+plot(point_est[order(subset_pop$TOT_POP)][1:44],44:1,xlim=c(0.70,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
 
 for(i in 1:44){
-	segments(LL[order(pop)][i],45-i,UL[order(pop)][i],45-i)
-	segments(LL[order(pop)][i],45-i-0.2,LL[order(pop)][i],45-i+0.2)
-	segments(UL[order(pop)][i],45-i-0.2,UL[order(pop)][i],45-i+0.2)
+  segments(LL[order(subset_pop$TOT_POP)][i],45-i,UL[order(subset_pop$TOT_POP)][i],45-i)
+  segments(LL[order(subset_pop$TOT_-POP)][i],45-i-0.2,LL[order(subset_pop$TOT_POP)][i],45-i+0.2)
+  segments(UL[order(subset_pop$TOT_POP)][i],45-i-0.2,UL[order(subset_pop$TOT_POP)][i],45-i+0.2)
 }
 abline(v=1)
 abline(v=mean(exp(main_MCMC$samples[,4050])),lty=2)
-axis(side=2,at=44:1,labels=county_names[order(pop)][1:44])
+axis(side=2,at=44:1,labels=county_names[order(subset_pop$TOT_POP)][1:44])
 legend("topright",lty=c(2,1),legend=c(expression(paste("E(",exp(beta[2]),"|Y)")),"Null Value"),bg="white")
+
 
 
 par(las=1)
 par(mar=c(6,6,1,1))
-plot(point_est[order(pop)][45:88],44:1,xlim=c(0.78,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
+plot(point_est[order(subset_pop$TOT_POP)][45:88],44:1,xlim=c(0.70,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
 
 for(i in 45:88){
-	segments(LL[order(pop)][i],89-i,UL[order(pop)][i],89-i)
-	segments(LL[order(pop)][i],89-i-0.2,LL[order(pop)][i],89-i+0.2)
-	segments(UL[order(pop)][i],89-i-0.2,UL[order(pop)][i],89-i+0.2)
+  segments(LL[order(subset_pop$TOT_POP)][i],89-i,UL[order(subset_pop$TOT_POP)][i],89-i)
+  segments(LL[order(subset_pop$TOT_POP)][i],89-i-0.2,LL[order(subset_pop$TOT_POP)][i],89-i+0.2)
+  segments(UL[order(subset_pop$TOT_POP)][i],89-i-0.2,UL[order(subset_pop$TOT_POP)][i],89-i+0.2)
 }
 abline(v=1)
 abline(v=mean(exp(main_MCMC$samples[,4050])),lty=2)
-axis(side=2,at=44:1,labels=county_names[order(pop)][45:88])
+axis(side=2,at=44:1,labels=county_names[order(subset_pop$TOT_POP)][45:88])
 legend("topright",lty=c(2,1),legend=c(expression(paste("E(",exp(beta[2]),"|Y)")),"Null Value"),bg="white")
 
 
 
 
-## ORDER BY VMT ##
+#############################
+## ORDER BY VMT: FIGURE A3 ##
+#############################
+
+
 par(las=1)
 par(mar=c(6,6,1,1))
-plot(point_est[order(total)][1:44],44:1,xlim=c(0.78,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
+plot(point_est[order(total)][1:44],44:1,xlim=c(0.70,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
+
+
 
 for(i in 1:44){
-	segments(LL[order(total)][i],45-i,UL[order(total)][i],45-i)
-	segments(LL[order(total)][i],45-i-0.2,LL[order(total)][i],45-i+0.2)
-	segments(UL[order(total)][i],45-i-0.2,UL[order(total)][i],45-i+0.2)
+  segments(LL[order(total)][i],45-i,UL[order(total)][i],45-i)
+  segments(LL[order(total)][i],45-i-0.2,LL[order(total)][i],45-i+0.2)
+  segments(UL[order(total)][i],45-i-0.2,UL[order(total)][i],45-i+0.2)
 }
+
 abline(v=1)
 abline(v=mean(exp(main_MCMC$samples[,4050])),lty=2)
 axis(side=2,at=44:1,labels=county_names[order(total)][1:44])
@@ -530,34 +553,24 @@ legend("topright",lty=c(2,1),legend=c(expression(paste("E(",exp(beta[2]),"|Y)"))
 
 par(las=1)
 par(mar=c(6,6,1,1))
-plot(point_est[order(total)][45:88],44:1,xlim=c(0.78,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
+plot(point_est[order(total)][45:88],44:1,xlim=c(0.7,1.0),pch=18,xlab=expression(paste("E(",exp(beta[2][i]),"|Y)")),ylab = "",yaxt='n')
+
 
 for(i in 45:88){
-	segments(LL[order(total)][i],89-i,UL[order(total)][i],89-i)
-	segments(LL[order(total)][i],89-i-0.2,LL[order(total)][i],89-i+0.2)
-	segments(UL[order(total)][i],89-i-0.2,UL[order(total)][i],89-i+0.2)
+  segments(LL[order(total)][i],89-i,UL[order(total)][i],89-i)
+  segments(LL[order(total)][i],89-i-0.2,LL[order(total)][i],89-i+0.2)
+  segments(UL[order(total)][i],89-i-0.2,UL[order(total)][i],89-i+0.2)
 }
+
 abline(v=1)
 abline(v=mean(exp(main_MCMC$samples[,4050])),lty=2)
 axis(side=2,at=44:1,labels=county_names[order(total)][45:88])
 legend("topright",lty=c(2,1),legend=c(expression(paste("E(",exp(beta[2]),"|Y)")),"Null Value"),bg="white")
 
 
-
-######### POPULATION BOXPLOTS ############
-
-boxplot(point_est~cut(subset_pop$TOT_POP,breaks=c(0,4000,8000,30000,1000000)),ylab = expression(paste("E(",exp(beta[2][i]),"|Y)")),xaxt='n',xlab="2008 Populaion",ylim=c(0.82,0.93))
-axis(1,at=c(1,2,3,5),labels=c("<40,000","40,000-79,999","80,000-299,999","Pop > 300,000"))
-
-
-boxplot(point_est~cut(1/subset_pop$TOT_POP,breaks=c(1/10000000,1/30000,1)),ylab = expression(paste("E(",exp(beta[2][i]),"|Y)")),xaxt='n',xlab="",ylim=c(0.82,0.93))
-axis(1,at=c(1,2),labels=c("Ohio's Six Largest Counties","Rest of Ohio"))
-
-
-
-########
-# MAPS #
-########
+####################################
+# MAP OF POINT ESTIMATES: FIGURE 2 #
+####################################
 
 colors <- rev(brewer.pal(11,"RdYlBu"))[1:6]
 
@@ -565,10 +578,10 @@ colors <- rev(brewer.pal(11,"RdYlBu"))[1:6]
 colors[length(colors)] <- "#FFFFFF"
 
 # COLOR BASED ON QUANTILES
-color_class <- cut(point_est,breaks=c(0.83,0.85,0.87,0.89,0.91,0.93,0.95))
+color_class <- cut(point_est,breaks=quantile(point_est,probs = c(0,0.1,0.25,0.5,0.75,0.9,1.0)))
 
 # CUSTOM COLOR CLASS
-#color_class <- cut(point_est,breaks=c(FILL IN BEAK POINTS))
+color_class <- cut(point_est,breaks=c(0.78,0.80,0.82,0.84,0.86,0.88,0.90))
 
 levels(color_class)
 
@@ -579,70 +592,69 @@ DID_data$COUNTYFP <- str_pad(DID_data$counties-39000,3,pad="0")
 
 ohio_map2 <- merge(ohio_map,DID_data,by=c("COUNTYFP"),sort=TRUE)
 
-legend_text <- rev(levels(color_class))[2:6]
+#legend_text <- rev(levels(color_class))
+
+# USE THE CODE BELOW TO MAKE THE TEXT LOOK NICER, IF NECESSARY
+legend_text <- c("(0.88,0.90]", "(0.86,0.88]", "(0.84,0.86]", "(0.82,0.84]", "(0.80,0.82]",  "(0.78,0.80]") 
 
 
-plot(ohio_map2[1],col=my_colors,main="")
-legend("bottomright",legend=legend_text,fill=rev(colors)[2:6],title=expression(paste("E(",exp(beta[2][i]),"|Y)")))
+#1            Columbus  wikipedia article        905,748               39.961 / -82.999
+#2            Cleveland  wikipedia article         388,072               41.499 / -81.695
+#3            Cincinnati  wikipedia article         309,317               39.127 / -84.514
+#4            Toledo  wikipedia article 279,789               41.664 / -83.555
+#5            Akron  wikipedia article 197,542               41.081 / -81.519
+#6            Dayton  wikipedia article              137,644               39.759 / -84.192
+#7            Parma  wikipedia article 79,937  41.405 / -81.723
+#8            Canton 71,885  40.799 / -81.378
+#9            Youngstown  wikipedia article     64,628  41.1 / -80.65
+#10          Lorain  wikipedia article 63,647  41.453 / -82.182
+#11          Hamilton  wikipedia article          62,407  39.4 / -84.561
+#12          Springfield  wikipedia article       59,680  39.924 / -83.809
+
+
+city_lat <- c(39.961,41.499,39.127,41.664,41.081,39.759)
+city_lon <- c(-82.999,-81.695,-84.514,-83.555,-81.519,-84.192)
+city_names <- c("Columbus","Cleveland","Cincinnati","Toledo","Akron","Dayton")
+
+
+plot(ohio_map2$geometry,col=my_colors,main="")
+legend("bottomright",legend=legend_text,fill=rev(colors),title=expression(paste("E(",exp(beta[2]),"|Y)")))
+points(city_lon,city_lat,pch=19,col="black")
+text(city_lon+c(0,0,-0.2,0,0,0),city_lat-c(0.2,0.1,0.1,0.1,0.1,0.1),labels=city_names,col="black")
+
 
 
 
 
 ########################
-# URBAN INFLUENCE CODE #
+# BOXPLOT: FIGURE 3(A) #
 ########################
 
-boxplot(point_est~as.numeric(UIC$UIC %in% c(1,2)),ylab = "DID Point Estimate",xlab="Metro vs. Non-metro (Metro = 1)",ylim=c(0.8,0.95))
-summary(lm(point_est~as.numeric(UIC$UIC %in% c(1,2)),weight=subset_pop$TOT_POP))
+biggest <- c(39035,39049,39061,39153,39113,39095)
+boxplot(point_est~as.numeric(counties %in% biggest),xaxt="n",xlab="",ylab=expression(paste("E(",exp(beta[2]),"|Y)")))
+axis(1,at=c(1,2),labels=c("Rest of Ohio","Ohio's Six Largest Counties"))
 
-UIC$UIC2 <- ifelse(UIC$UIC %in% c(1,2,3,5),UIC$UIC,6)
-boxplot(point_est~UIC$UIC2,ylab = "DID Point Estimate",xlab="UIC",ylim=c(0.8,0.95),xaxt="n")
-axis(1,at=c(1,2,3,4,5),labels = c("Large Metro","Small Metro","Micropolitan (large adj.)","Micropolitan (small adj.)","Non-core or non-metro adj"))
 
-summary(lm(point_est~as.factor(UIC$UIC2),weight=subset_pop$TOT_POP))
+
+#####################################
+# URBAN INFLUENCE CODE: FIGURE 3(B) #
+#####################################
+
 
 UIC$UIC3 <- rep(0,nrow(UIC))
 for (i in 1:nrow(UIC)){
-	if(UIC$UIC[i] == 1){UIC$UIC3[i] <- 1}
-	if(UIC$UIC[i] == 2){UIC$UIC3[i] <- 2}
-	if(UIC$UIC[i] %in% c(3,4,5,6,7)){UIC$UIC3[i] <- 3}
-	if(UIC$UIC[i] > 7){UIC$UIC3[i] <- 4}
+  if(UIC$UIC[i] == 1){UIC$UIC3[i] <- "1: Large Metro"}
+  if(UIC$UIC[i] == 2){UIC$UIC3[i] <- "2: Small Metro"}
+  if(UIC$UIC[i] %in% c(3,4)){UIC$UIC3[i] <- "3-7: Metro Adjacent"}
+  if(UIC$UIC[i] %in% c(5,6,7)){UIC$UIC3[i] <- "3-7: Metro Adjacent"}
+  if(UIC$UIC[i] > 7){UIC$UIC3[i] <- "8+: Not Metro Adjacent"}
+  
 }
 
-boxplot(point_est~UIC$UIC3,ylab = "DID Point Estimate",xlab="Urban Influence Code",ylim=c(0.82,0.93),xaxt='n')
-axis(1,at=c(1,2,3,4),labels = c("Large Metro","Small Metro","Metro Adjacent","Not Metro Adjacent"))
+boxplot(point_est~UIC$UIC3,ylim=c(0.75,0.9),xlab="Urban Influence Code",ylab=expression(paste("E(",exp(beta[2]),"|Y)")))
 
 
 
-UIC$UIC4 <- rep(0,nrow(UIC))
-for (i in 1:nrow(UIC)){
-	if(UIC$UIC[i] %in% c(1,2)){UIC$UIC4[i] <- "Metro"}
-	if(UIC$UIC[i] %in% c(3,5)){UIC$UIC4[i] <- "Micropolitan Metro Adjacent"}
-	if(UIC$UIC[i] %in% c(4,6,7)){UIC$UIC4[i] <- "Non-core Metro Adjacent"}
-	if(UIC$UIC[i] > 7){UIC$UIC4[i] <- "Not Metro Adjacent"}
 
-}
-
-boxplot(point_est~UIC$UIC4,ylab = "DID Point Estimate",xlab="UIC",ylim=c(0.8,0.95))
-summary(lm(point_est~as.factor(UIC$UIC4)))
-
-tapply(point_est,UIC$UIC,summary)
-tapply(point_est,as.numeric(UIC$UIC %in% c(1,2)),summary)
-tapply(point_est,UIC$UIC3,summary)
-tapply(point_est,UIC$UIC4,summary)
-
-
-
-#######
-# VMT #
-#######
-
-plot(interstate,point_est,pch=18)
-plot(total,point_est,pch=18,col=UIC$UIC2)
-plot(total_per_pop,point_est,pch=18)
-plot(pct_urban,point_est,pch=18)
-
-plot(total[order(total)],point_est[order(total)],pch=18)
-#quantile(total,probs=c(0,0.25,0.5,0.75,0.9,1))
 
 

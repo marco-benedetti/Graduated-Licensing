@@ -1,8 +1,8 @@
 
 
-###############################
-# STEP 1: DATA PRE-PROCESSING #
-###############################
+#######################
+# DATA PRE-PROCESSING #
+#######################
 
 # INSTALL PACKAGES AND LOAD LIBRARIES
 #install.packages("INLA")
@@ -25,32 +25,34 @@ require(tidycensus)
 require(RColorBrewer)
 
 
+# CHANGE TO ROOT DIRECTORY
+root <- ""
+
+
 # READ IN DATA 
-# CHANGE FILE PATHS
+basedata_trt <- read.csv(paste(root,"Data\\OhioCrashes_1617.csv",sep=""))
+basedata_ctrl <- read.csv(paste(root,"Data\\OhioCrashes_3034.csv",sep=""))
 
-basedata_trt <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\OhioCrashes_1617.csv")
-basedata_ctrl <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\OhioCrashes_1824.csv")
+LD_data <- read.csv(paste(root,"Data\\Num_LD_Main_File.csv",sep=""))
 
-LD_data <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\Num_LD_Main_File.csv")
+pop_00_09 <- read.csv(paste(root,"Data\\age_grp_ohio_county_pop_00_09.csv",sep=""))
+pop_10_18 <- read.csv(paste(root,"Data\\age_grp_ohio_county_pop_10_18.csv",sep=""))
 
-pop_00_09 <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\age_grp_ohio_county_pop_00_09.csv")
-pop_10_18 <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\age_grp_ohio_county_pop_10_18.csv")
+poverty_2008 <- read.csv(paste(root,"Data\\est08all.csv",sep=""))
+UIC <- read.csv(paste(root,"Data\\Ohio_UIC.csv",sep=""))
 
-poverty_2008 <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\est08all.csv")
-UIC <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\Ohio_UIC.csv")
-
-county_map <- st_read("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\shapefile\\cb_2018_us_county_500k.shp")
+county_map <- st_read(paste(root,"Data\\shapefile\\cb_2018_us_county_500k.shp",sep=""))
 ohio_map <- county_map[which(county_map$STATEFP=="39"),]
 rm(county_map)
 
-police_data <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Send for Code Check\\Data\\police_data.csv")
-
-vmt <- read.csv("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Code\\Final Programs\\Data\\VMT2008.csv")
+police_data <- read.csv(paste(root,"Data\\police_data.csv",sep=""))
 
 
-###########################
-# STEP 2: DATA PROCESSING #
-###########################
+vmt <- read.csv(paste(root,"Data\\VMT2008.csv",sep=""))
+
+###################
+# DATA PROCESSING #
+###################
 
 ## PROCESS THE POPULATION DATA ##	
 
@@ -61,7 +63,6 @@ subset_pop <- pop_00_09[which((pop_00_09$year==2008)& (pop_00_09$AGEGRP==4)),1:9
 
 # Convert variables 
 LD_data$LD_16_17 <- as.numeric(LD_data$LD_16_17)
-LD_data$LD_18_24 <- as.numeric(LD_data$LD_18_24)
 LD_data$LD_30_34 <- as.numeric(LD_data$LD_30_34)
 
 # Delete extra columns
@@ -119,10 +120,10 @@ trt_data_step3$trt = rep(1,nrow(trt_data_step3))
 trt_data_step3$period <- as.numeric(trt_data_step3$year > 2007)
 trt_data_step3$injury_rate <- trt_data_step3$COUNT/trt_data_step3$LD_16_17*1000
 
-ctrl_data_step3$AGEGRP = rep("18-24",nrow(ctrl_data_step3))
+ctrl_data_step3$AGEGRP = rep("30-34",nrow(ctrl_data_step3))
 ctrl_data_step3$trt = rep(0,nrow(ctrl_data_step3))
 ctrl_data_step3$period <- as.numeric(ctrl_data_step3$year > 2007)
-ctrl_data_step3$injury_rate <- ctrl_data_step3$COUNT/ctrl_data_step3$LD_18_24*1000
+ctrl_data_step3$injury_rate <- ctrl_data_step3$COUNT/ctrl_data_step3$LD_30_34*1000
 
 # Combine
 analysis_data_step1 <- rbind(trt_data_step3,ctrl_data_step3)
@@ -141,7 +142,7 @@ counties <- as.numeric(names(table(analysis_data$county)))
 
 overall_count <- aggregate(analysis_data$COUNT,by=list(analysis_data$year,analysis_data$AGEGRP),FUN=sum)$x
 overall_denom_16_17 <- aggregate(analysis_data$LD_16_17 ,by=list(analysis_data$year),FUN=sum)$x/2
-overall_denom_18_24 <- aggregate(analysis_data$LD_18_24 ,by=list(analysis_data$year),FUN=sum)$x/2
+overall_denom_30_34 <- aggregate(analysis_data$LD_30_34 ,by=list(analysis_data$year),FUN=sum)$x/2
 
 
 
@@ -153,55 +154,64 @@ overall_denom_18_24 <- aggregate(analysis_data$LD_18_24 ,by=list(analysis_data$y
 
 
 # SPAGHETTI PLOTS 
-# png("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Code\\Final Programs\\Output\\Figures\\spaghetti_plotV2.png",height=8,width=8,units="in",res=500)
+
+
+# RAW CRASH RATE (NOT INCLUDED IN MANUSCRIPT)
 counties <- as.numeric(names(table(analysis_data$county)))
 plot(analysis_data$year[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="16-17"))],
      analysis_data$injury_rate[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="16-17"))],
-     type="l",ylim=c(0,215),xlab="Year",ylab="Crash Rate per 1,000 Licensed Drivers",col="#4B0092")
-lines(analysis_data$year[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="18-24"))],
-     analysis_data$injury_rate[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="18-24"))],col="#1AFF1A")
+     type="l",ylim=c(0,215),xlab="Year",ylab="Crash Rate per 1,000 Licensed Drivers",col="red")
+lines(analysis_data$year[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="30-34"))],
+     analysis_data$injury_rate[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="30-34"))],col="blue")
 
 for(i in 1:length(counties)){
 
 	tmp <- analysis_data[which((analysis_data$county == counties[i]) & (analysis_data$AGEGRP=="16-17")),]
-	lines(tmp$year,tmp$injury_rate,col="#4B0092")
+	lines(tmp$year,tmp$injury_rate,col="red")
 
-	tmp2 <- analysis_data[which((analysis_data$county == counties[i]) & (analysis_data$AGEGRP=="18-24")),]
-	lines(tmp2$year,tmp2$injury_rate,col="#1AFF1A",lty=1)
+	tmp2 <- analysis_data[which((analysis_data$county == counties[i]) & (analysis_data$AGEGRP=="30-34")),]
+	lines(tmp2$year,tmp2$injury_rate,col="blue",lty=1)
 
 }
 abline(v=2007.5)
-legend("topright",lty=c(1,1,2,2),lwd=c(1,1,4,4),col=c("#4B0092","#1AFF1A","#4B0092","#1AFF1A"),
-		legend=c("16-17-year-olds (county)","18-24-year-olds (county)","16-17-year-olds (statewide)","18-24-year-olds (statewide)"))
-lines(seq(2003,2017),overall_count[1:15]/overall_denom_16_17*1000,lwd=4,col="#197602",lty=2)
-lines(seq(2003,2017),overall_count[16:30]/overall_denom_18_24*1000,lwd=4,col="#009688",lty=2)
-#dev.off()
+legend("topright",lty=c(1,1,2,2),lwd=c(1,1,4,4),col=c("red","blue","darkred","darkblue"),
+		legend=c("16-17-year-olds (county)","30-34-year-olds (county)","16-17-year-olds (statewide)","30-34-year-olds (statewide)"))
+lines(seq(2003,2017),overall_count[1:15]/overall_denom_16_17*1000,lwd=4,col="darkred",lty=2)
+lines(seq(2003,2017),overall_count[16:30]/overall_denom_30_34*1000,lwd=4,col="darkblue",lty=2)
 
-#png("R:\\RESZhu\\Research_Marco\\Policy Effect Heterogeneity\\Code\\Final Programs\\Output\\Figures\\log_spaghetti_plot.png",height=8,width=8,units="in",res=500)
+##############################
+# LOG CRASH RATES: FIGURE A1 #
+##############################
+
 counties <- as.numeric(names(table(analysis_data$county)))
 plot(analysis_data$year[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="16-17"))],
      log(analysis_data$injury_rate)[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="16-17"))],
      type="l",ylim=c(2.5,6),xlab="Year",ylab="Log Crash Rate per 1,000 Licensed Drivers",col=2)
-lines(analysis_data$year[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="18-24"))],
-     log(analysis_data$injury_rate)[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="18-24"))],col=4)
+lines(analysis_data$year[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="30-34"))],
+     log(analysis_data$injury_rate)[which((analysis_data$county == counties[1]) & (analysis_data$AGEGRP=="30-34"))],col=4)
 
 for(i in 1:length(counties)){
 
 	tmp <- analysis_data[which((analysis_data$county == counties[i]) & (analysis_data$AGEGRP=="16-17")),]
 	lines(tmp$year,log(tmp$injury_rate),col=2)
 
-	tmp2 <- analysis_data[which((analysis_data$county == counties[i]) & (analysis_data$AGEGRP=="18-24")),]
+	tmp2 <- analysis_data[which((analysis_data$county == counties[i]) & (analysis_data$AGEGRP=="30-34")),]
 	lines(tmp2$year,log(tmp2$injury_rate),col=4)
 
 }
 abline(v=2007.5)
 legend("topright",lty=c(1,1,2,2),lwd=c(1,1,4,4),col=c(2,4,"firebrick4","blue4"),
-		legend=c("16-17-year-olds (county)","18-24-year-olds (county)","16-17-year-olds (statewide)","18-24-year-olds (statewide)"))
+		legend=c("16-17-year-olds (county)","30-34-year-olds (county)","16-17-year-olds (statewide)","30-34-year-olds (statewide)"))
 lines(seq(2003,2017),log(overall_count[1:15]/overall_denom_16_17*1000),lwd=4,col="firebrick4",lty=2)
-lines(seq(2003,2017),log(overall_count[16:30]/overall_denom_18_24*1000),lwd=4,col="blue4",lty=2)
-#dev.off()
+lines(seq(2003,2017),log(overall_count[16:30]/overall_denom_30_34*1000),lwd=4,col="blue4",lty=2)
 
-# CRASH RATES #
+
+
+
+##############################
+# STATE CRASH RATES: TABLE 1 #
+##############################
+
 # TREATED GROUP #
 analysis_data_16_17 <- analysis_data[which(analysis_data$AGEGRP=="16-17"),]
 overall_trt <- sum(analysis_data_16_17$COUNT)/sum(analysis_data_16_17$LD_16_17)*1000
@@ -221,14 +231,14 @@ percent_trt
 
 
 # CONTROL GROUP
-analysis_data_18_24 <- analysis_data[which(analysis_data$AGEGRP=="18-24"),]
+analysis_data_30_34 <- analysis_data[which(analysis_data$AGEGRP=="30-34"),]
 
-overall_ctrl <- sum(analysis_data_18_24$COUNT)/sum(analysis_data_18_24$LD_18_24)*1000
-pre_ctrl <- sum(analysis_data_18_24$COUNT[which(analysis_data_18_24$year < 2008)])/sum(analysis_data_18_24$LD_18_24[which(analysis_data_18_24$year < 2008)])*1000
-post_ctrl <- sum(analysis_data_18_24$COUNT[which(analysis_data_18_24$year >= 2008)])/sum(analysis_data_18_24$LD_18_24[which(analysis_data_18_24$year >= 2008)])*1000
+overall_ctrl <- sum(analysis_data_30_34$COUNT)/sum(analysis_data_30_34$LD_30_34)*1000
+pre_ctrl <- sum(analysis_data_30_34$COUNT[which(analysis_data_30_34$year < 2008)])/sum(analysis_data_30_34$LD_30_34[which(analysis_data_30_34$year < 2008)])*1000
+post_ctrl <- sum(analysis_data_30_34$COUNT[which(analysis_data_30_34$year >= 2008)])/sum(analysis_data_30_34$LD_30_34[which(analysis_data_30_34$year >= 2008)])*1000
 
-diff_ctrl <- sum(analysis_data_18_24$COUNT[which(analysis_data_18_24$year < 2008)])/sum(analysis_data_18_24$LD_18_24[which(analysis_data_18_24$year < 2008)])*1000-
-sum(analysis_data_18_24$COUNT[which(analysis_data_18_24$year >= 2008)])/sum(analysis_data_18_24$LD_18_24[which(analysis_data_18_24$year >= 2008)])*1000
+diff_ctrl <- sum(analysis_data_30_34$COUNT[which(analysis_data_30_34$year < 2008)])/sum(analysis_data_30_34$LD_30_34[which(analysis_data_30_34$year < 2008)])*1000-
+sum(analysis_data_30_34$COUNT[which(analysis_data_30_34$year >= 2008)])/sum(analysis_data_30_34$LD_30_34[which(analysis_data_30_34$year >= 2008)])*1000
 
 percent_ctrl <- diff_ctrl/pre_ctrl*100
 
@@ -239,11 +249,9 @@ post_ctrl
 diff_ctrl
 percent_ctrl
 
-
-## INDIVIDUAL RATES ##
-
-
-
+##########################################
+# COUNTY DESCRIPTIVE STATISTICS: TABLE 2 #
+##########################################
 
 analysis_data_16_17 <- analysis_data[which(analysis_data$AGEGRP=="16-17"),]
 overall_trt <- aggregate(analysis_data_16_17$COUNT,FUN="sum",by=list(analysis_data_16_17$county))$x/
@@ -269,21 +277,38 @@ summary(percent_trt)
 
 
 # CONTROL GROUP
-analysis_data_18_24 <- analysis_data[which(analysis_data$AGEGRP=="18-24"),]
-overall_trt <- aggregate(analysis_data_18_24$COUNT,FUN="sum",by=list(analysis_data_18_24$county))$x/
-			aggregate(analysis_data_18_24$LD_18_24,FUN="sum",by=list(analysis_data_18_24$county))$x*1000
-pre_trt <- aggregate(analysis_data_18_24$COUNT[which(analysis_data_18_24$year < 2008)],FUN="sum",by=list(analysis_data_18_24$county[which(analysis_data_18_24$year < 2008)]))$x/
-		aggregate(analysis_data_18_24$LD_18_24[which(analysis_data_18_24$year < 2008)],FUN="sum",by=list(analysis_data_18_24$county[which(analysis_data_18_24$year < 2008)]))$x*1000
+analysis_data_30_34 <- analysis_data[which(analysis_data$AGEGRP=="30-34"),]
+overall_trt <- aggregate(analysis_data_30_34$COUNT,FUN="sum",by=list(analysis_data_30_34$county))$x/
+			aggregate(analysis_data_30_34$LD_30_34,FUN="sum",by=list(analysis_data_30_34$county))$x*1000
+pre_trt <- aggregate(analysis_data_30_34$COUNT[which(analysis_data_30_34$year < 2008)],FUN="sum",by=list(analysis_data_30_34$county[which(analysis_data_30_34$year < 2008)]))$x/
+		aggregate(analysis_data_30_34$LD_30_34[which(analysis_data_30_34$year < 2008)],FUN="sum",by=list(analysis_data_30_34$county[which(analysis_data_30_34$year < 2008)]))$x*1000
 
-post_trt <- aggregate(analysis_data_18_24$COUNT[which(analysis_data_18_24$year >= 2008)],FUN="sum",by=list(analysis_data_18_24$county[which(analysis_data_18_24$year >= 2008)]))$x/
-		aggregate(analysis_data_18_24$LD_18_24[which(analysis_data_18_24$year >= 2008)],FUN="sum",by=list(analysis_data_18_24$county[which(analysis_data_18_24$year >= 2008)]))$x*1000
+post_trt <- aggregate(analysis_data_30_34$COUNT[which(analysis_data_30_34$year >= 2008)],FUN="sum",by=list(analysis_data_30_34$county[which(analysis_data_30_34$year >= 2008)]))$x/
+		aggregate(analysis_data_30_34$LD_30_34[which(analysis_data_30_34$year >= 2008)],FUN="sum",by=list(analysis_data_30_34$county[which(analysis_data_30_34$year >= 2008)]))$x*1000
 
 
 diff_trt <- pre_trt-post_trt
 
 percent_trt <- diff_trt/pre_trt*100
 
+summary(overall_trt)
 summary(pre_trt)
 summary(post_trt)
 summary(diff_trt)
 summary(percent_trt)
+
+
+
+
+#########################################
+# NUMBER OF CRASHES BY COUNTY: TABLE A1 #
+#########################################
+
+aggregate(analysis_data$COUNT,by=list(analysis_data$COUNTY),FUN=sum)
+t1<-aggregate(analysis_data$COUNT[which(analysis_data$trt==1)],by=list(analysis_data$COUNTY[which(analysis_data$trt==1)]),FUN=sum)
+t2<-aggregate(analysis_data$COUNT[which(analysis_data$trt==0)],by=list(analysis_data$COUNTY[which(analysis_data$trt==0)]),FUN=sum)
+
+t3<-aggregate(analysis_data$LD_16_17[which(analysis_data$trt==1)],by=list(analysis_data$COUNTY[which(analysis_data$trt==1)]),FUN=sum)
+t4<-aggregate(analysis_data$LD_30_34[which(analysis_data$trt==0)],by=list(analysis_data$COUNTY[which(analysis_data$trt==0)]),FUN=sum)
+
+
